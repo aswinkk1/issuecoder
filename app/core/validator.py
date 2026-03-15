@@ -36,6 +36,34 @@ class Validator:
         except Exception as e:
             logger.error(f"Error executing validation command: {e}")
             return False, str(e)
+
+    def run_validation_with_healing(self, agent_instance, original_analysis: Dict[str, Any], max_retries: int = 3) -> bool:
+        """
+        Runs tests and if they fail, asks the agent to fix the code based on the compiler/test error.
+        """
+        for attempt in range(max_retries):
+            logger.info(f"Validation Attempt {attempt + 1}/{max_retries}")
+            
+            success, output = self.run_tests()
+            if success:
+                logger.info("Validation passed!")
+                return True
+                
+            logger.warning(f"Validation failed. Attempting self-healing... Error snippet: {output[:200]}")
+            
+            # Format a healing plan request for the agent
+            healing_analysis = original_analysis.copy()
+            healing_analysis['primary_goal'] = f"Fix failing tests/compilation for: {original_analysis.get('primary_goal')}"
+            healing_analysis['context'] = f"The previous changes failed validation. The error output was:\n{output}\n\nPlease analyze this error, find the bug in the modified codebase, and apply a fix."
+            
+            # Ask the agent to try again with the error context
+            agent_success = agent_instance.resolve_issue(healing_analysis)
+            if not agent_success:
+                logger.error("Agent failed to apply a healing patch.")
+                return False
+                
+        logger.error(f"Validation failed after {max_retries} healing attempts.")
+        return False
             
     def ai_review(self, diff: str, original_requirements: str) -> Tuple[bool, str]:
         """

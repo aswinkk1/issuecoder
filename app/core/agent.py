@@ -5,6 +5,12 @@ from typing import Dict, Any, List
 from app.services.llm_service import LLMFactory
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_community.document_loaders.generic import GenericLoader
+from langchain_community.document_loaders.parsers import LanguageParser
+from langchain_text_splitters import Language
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_chroma import Chroma
+from langchain_openai import OpenAIEmbeddings
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +44,52 @@ class CodeResolverAgent:
         
     def _retrieve_code_context(self, query: str) -> str:
         """
-        TODO: Implement ast parsing, grep, or vector search.
-        For C++, ctags or grep often work best locally.
+        Loads the C++ codebase, creates an ephemeral vector index, and returns the top relevant chunks.
         """
-        logger.info("Retrieving code context (placeholder).")
-        return "class SampleCPP { void doSomething(); };"
+        logger.info(f"Retrieving code context for query: {query[:50]}...")
+        
+        try:
+            # 1. Load C++ source files from the workspace
+            loader = GenericLoader.from_filesystem(
+                self.workspace_path,
+                glob="**/*",
+                suffixes=[".cpp", ".c", ".h", ".hpp"],
+                parser=LanguageParser(language=Language.CPP, parser_threshold=500),
+            )
+            documents = loader.load()
+            
+            if not documents:
+                return "No C++ files found in the workspace context."
+                
+            # 2. Split documents into chunk sizes
+            python_splitter = RecursiveCharacterTextSplitter.from_language(
+                language=Language.CPP, chunk_size=2000, chunk_overlap=200
+            )
+            texts = python_splitter.split_documents(documents)
+            
+            # 3. Create ephemeral Chroma VectorDB (in-memory)
+            # Defaulting to OpenAI Embeddings; could be made configurable via factory similar to LLMs
+            target_embeddings = OpenAIEmbeddings()
+            
+            # 4. Embed and search
+            db = Chroma.from_documents(texts, target_embeddings)
+            retriever = db.as_retriever(
+                search_type="mmr", # Maximum marginal relevance for diverse chunks
+                search_kwargs={"k": 5},
+            )
+            
+            relevant_docs = retriever.invoke(query)
+            
+            # 5. Format output for the LLM prompt
+            context_string = "\n\n---\n\n".join(
+                f"File: {doc.metadata.get('source', 'Unknown')}\nCode:\n{doc.page_content}" 
+                for doc in relevant_docs
+            )
+            return context_string
+            
+        except Exception as e:
+            logger.error(f"Error during code context retrieval: {e}")
+            return "Error retrieving extended codebase context."
         
     def _create_execution_plan(self, analysis: Dict[str, Any], context: str) -> str:
         """Ask the LLM what specific file modifications to make."""

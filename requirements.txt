@@ -10,3 +10,8 @@ python-dotenv
 jira
 requests
 pydantic
+jinja2
+aiofiles
+langchain-chroma
+chromadb
+tiktoken

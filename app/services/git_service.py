@@ -1,5 +1,6 @@
 import os
 import logging
+import subprocess
 from github import Github
 from atlassian import Bitbucket
 from typing import Dict, Any, Optional
@@ -22,9 +23,34 @@ class PRCreator:
         self.bb_pass = os.environ.get("BITBUCKET_APP_PASSWORD")
         self.bb_workspace = os.environ.get("BITBUCKET_WORKSPACE")
         
+    def commit_and_push(self, branch_name: str, commit_message: str) -> bool:
+        """
+        Executes local git commands to branch, stage, commit, and push changes to origin.
+        """
+        logger.info(f"Committing changes to local branch: {branch_name}")
+        cmds = [
+            f"git checkout -b {branch_name}",
+            "git add .",
+            f'git commit -m "{commit_message}"',
+            f"git push origin {branch_name}"
+        ]
+        
+        for cmd in cmds:
+            try:
+                logger.debug(f"Running: {cmd}")
+                result = subprocess.run(cmd, cwd=self.workspace_path, shell=True, capture_output=True, text=True)
+                if result.returncode != 0 and "nothing to commit" not in result.stdout:
+                    logger.error(f"Git command failed: {cmd}\nError: {result.stderr}")
+                    return False
+            except Exception as e:
+                logger.error(f"Failed to execute git command {cmd}: {e}")
+                return False
+                
+        return True
+
     def create_pr(self, repo_name: str, branch_name: str, title: str, description: str) -> Optional[str]:
         """
-        Commits changes (via local git command or agent), then uses API to open PR.
+        Uses API to open PR. Assumes commit_and_push() was already successfully called.
         Returns the PR URL if successful.
         """
         if self.vcs_provider == "github":

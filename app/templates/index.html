@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoResolver - Manual Trigger</title>
+    <!-- Modern Typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Background decorative elements -->
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        
+        <main class="glass-panel">
+            <header>
+                <div class="logo-container">
+                    <div class="logo-icon">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <h1>AutoResolver</h1>
+                </div>
+                <p class="subtitle">Autonomous AI Agent for Jira Issue Resolution</p>
+            </header>
+
+            <form id="triggerForm" class="trigger-form">
+                <div class="input-group">
+                    <label for="issueKey">Jira Issue Key</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="issueKey" name="issueKey" placeholder="e.g. PROJ-123" required autocomplete="off">
+                        <div class="input-highlight"></div>
+                    </div>
+                </div>
+
+                <button type="submit" id="submitBtn" class="primary-btn">
+                    <span class="btn-text">Resolve Issue</span>
+                    <span class="btn-loader" style="display: none;">
+                        <svg class="spinner" viewBox="0 0 50 50">
+                            <circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle>
+                        </svg>
+                    </span>
+                </button>
+            </form>
+
+            <div id="statusContainer" class="status-container" style="display: none;">
+                <div class="status-header">
+                    <h3>Resolution Status</h3>
+                    <span id="statusBadge" class="badge">Processing</span>
+                </div>
+                <p id="statusMessage" class="status-message">Initializing agent workflow...</p>
+                <div class="progress-bar">
+                    <div id="progressFill" class="progress-fill"></div>
+                </div>
+                <div id="prLinkContainer" class="pr-link-container" style="display: none;">
+                    <a id="prLink" href="#" target="_blank" class="pr-link">View Pull Request ↗</a>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.getElementById('triggerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const issueKey = document.getElementById('issueKey').value.trim();
+            if (!issueKey) return;
+            
+            const btn = document.getElementById('submitBtn');
+            const btnText = btn.querySelector('.btn-text');
+            const btnLoader = btn.querySelector('.btn-loader');
+            const statusContainer = document.getElementById('statusContainer');
+            const statusMessage = document.getElementById('statusMessage');
+            const statusBadge = document.getElementById('statusBadge');
+            const progressFill = document.getElementById('progressFill');
+            const prLinkContainer = document.getElementById('prLinkContainer');
+            const prLink = document.getElementById('prLink');
+            
+            // UI State updates
+            btnText.style.display = 'none';
+            btnLoader.style.display = 'block';
+            btn.disabled = true;
+            statusContainer.style.display = 'block';
+            
+            statusBadge.textContent = 'Processing';
+            statusBadge.className = 'badge badge-processing';
+            statusMessage.textContent = `Analyzing issue ${issueKey}...`;
+            progressFill.style.width = '20%';
+            prLinkContainer.style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/resolve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ issue_key: issueKey })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusBadge.textContent = 'Success';
+                    statusBadge.className = 'badge badge-success';
+                    statusMessage.textContent = data.message || 'Issue resolved successfully';
+                    progressFill.style.width = '100%';
+                    progressFill.style.backgroundColor = 'var(--success-color)';
+                    
+                    if (data.pr_url) {
+                        prLink.href = data.pr_url;
+                        prLinkContainer.style.display = 'flex';
+                    }
+                } else {
+                    statusBadge.textContent = 'Failed';
+                    statusBadge.className = 'badge badge-error';
+                    statusMessage.textContent = data.detail || 'An error occurred during workflow.';
+                    progressFill.style.width = '100%';
+                    progressFill.style.backgroundColor = 'var(--error-color)';
+                }
+            } catch (err) {
+                statusBadge.textContent = 'Error';
+                statusBadge.className = 'badge badge-error';
+                statusMessage.textContent = 'Network error or server unreachable.';
+                progressFill.style.width = '100%';
+                progressFill.style.backgroundColor = 'var(--error-color)';
+            } finally {
+                btnText.style.display = 'block';
+                btnLoader.style.display = 'none';
+                btn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
